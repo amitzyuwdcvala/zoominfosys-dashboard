@@ -29,8 +29,8 @@ class PaymentController extends Controller
         $response = $this->paymentService->create_order_service($request);
 
         $statusCode = $response->getStatusCode();
-        if ($statusCode >= 400) {
-            Log::warning('[CreateOrder] Returning error response', [
+        if ($statusCode >= 500) {
+            Log::error('[CreateOrder] Server error response', [
                 'status_code' => $statusCode,
                 'android_id' => $request->user()?->android_id,
                 'plan_id' => $request->input('plan_id'),

@@ -32,10 +32,7 @@ class AndroidAuth
         $user = User::where('android_id', $androidId)->first();
 
         if (!$user) {
-            \Illuminate\Support\Facades\Log::warning('[AndroidAuth] User not found', [
-                'android_id' => $androidId,
-                'path' => $request->path(),
-            ]);
+            // No log here: unknown android_id is common client noise under load
             return $this->unauthorizedResponse([], 'User not found. Please register first.');
         }
 

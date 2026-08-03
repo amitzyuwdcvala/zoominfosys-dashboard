@@ -103,7 +103,7 @@ class VideoAccessService
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('VideoAccessService access_video_service error: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString(),
+                'android_id' => $androidId ?? null,
             ]);
 
             return $this->errorResponse([], 'Failed to process video access. Please try again.', 500);

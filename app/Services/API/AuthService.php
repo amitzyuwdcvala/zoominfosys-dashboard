@@ -57,9 +57,7 @@ class AuthService
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('AuthService register_service error: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString(),
-            ]);
+            Log::error('AuthService register_service error: ' . $e->getMessage());
 
             return $this->errorResponse([], 'Registration failed. Please try again.', 500);
         }
