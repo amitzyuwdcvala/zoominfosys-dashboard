@@ -7,12 +7,17 @@ use App\Models\Setting;
 use App\Schemas\SettingFormSchema;
 use Elegant\Sanitizer\Sanitizer;
 use Exception;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class SettingServices
 {
     use ApiResponses;
+
+    public const CACHE_KEY_ADS_SETTINGS = 'ads_settings_all';
+
+    public const CACHE_TTL_ADS_SETTINGS = 300; // 5 minutes
 
     /**
      * Load manage setting canvas (create/edit).
@@ -63,6 +68,7 @@ class SettingServices
             }
 
             DB::commit();
+            $this->invalidateAdsSettingsCache();
             return $this->successResponse(['message' => $message]);
         } catch (Exception $e) {
             DB::rollBack();
@@ -85,10 +91,19 @@ class SettingServices
             $setting = Setting::findOrFail($data['id']);
             $setting->delete();
 
+            $this->invalidateAdsSettingsCache();
             return $this->successResponse(['message' => 'Setting deleted successfully']);
         } catch (Exception $e) {
             Log::error('delete_setting_error', ['message' => $e->getMessage(), 'line' => $e->getLine()]);
             return $this->errorResponse([], __('Something went wrong'), 500);
         }
+    }
+
+    /**
+     * Clear ads settings cache so app gets fresh data after admin changes.
+     */
+    public function invalidateAdsSettingsCache(): void
+    {
+        Cache::forget(self::CACHE_KEY_ADS_SETTINGS);
     }
 }
