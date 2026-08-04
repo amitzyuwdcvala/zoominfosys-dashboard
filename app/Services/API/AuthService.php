@@ -6,6 +6,7 @@ use App\Http\Traits\ApiResponses;
 use App\Models\AppConfig;
 use App\Models\User;
 use App\Models\UserSubscription;
+use App\Constants\SubscriptionStatus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
@@ -15,18 +16,21 @@ class AuthService
     use ApiResponses;
 
     /**
-     * Register user (first time app launch)
+     * Register user (first time app launch).
+     * Also checks and expires VIP subscription on-the-fly so cron is not needed.
      */
     public function register_service($request)
     {
         try {
             DB::beginTransaction();
-            // dd($request->all());
+
             $androidId = $request->header('X-Android-Id') ?? $request->header('X-Android-ID') ?? $request->input('android_id');
 
             $user = User::find($androidId);
 
             if ($user) {
+                $this->expireIfNeeded($user);
+
                 DB::commit();
 
                 return $this->successResponse([
@@ -40,11 +44,10 @@ class AuthService
 
             // Create new user
             $user = User::create([
-                'android_id' => $androidId,
-                'is_vip' => false,
+                'android_id'        => $androidId,
+                'is_vip'            => false,
                 'video_click_count' => 5,
             ]);
-
 
             DB::commit();
 
@@ -55,12 +58,58 @@ class AuthService
                     'config' => AppConfig::getDecodedCached(),
                 ],
             ], 201);
+
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('AuthService register_service error: ' . $e->getMessage());
 
             return $this->errorResponse([], 'Registration failed. Please try again.', 500);
         }
+    }
+
+    /**
+     * Check if user's VIP subscription has expired and mark it expired immediately.
+     * Called on every register (app open) so cron is not needed.
+     */
+    private function expireIfNeeded(User $user): void
+    {
+        // Only VIP users need checking
+        if (!$user->is_vip) {
+            return;
+        }
+
+        $subscription = $user->subscriptions; // hasOne — latest subscription row
+
+        if (!$subscription) {
+            // VIP flag set but no subscription row — clean up
+            $user->is_vip = false;
+            $user->save();
+            \App\Services\API\VideoAccessService::invalidateVipAccessCache($user->android_id);
+            return;
+        }
+
+        // Check if subscription end date has passed
+        $expired = false;
+
+        if ($subscription->end_at && $subscription->end_at < now()) {
+            $expired = true;
+        } elseif (!$subscription->end_at && $subscription->end_date && $subscription->end_date < now()->toDateString()) {
+            $expired = true;
+        }
+
+        if (!$expired) {
+            return; 
+        }
+
+        if ($subscription->status !== SubscriptionStatus::EXPIRED) {
+            $subscription->status = SubscriptionStatus::EXPIRED;
+            $subscription->save();
+        }
+
+        $user->is_vip = false;
+        $user->save();
+
+        \App\Services\API\VideoAccessService::invalidateVipAccessCache($user->android_id);
     }
 
     /**
